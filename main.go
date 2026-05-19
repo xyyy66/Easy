@@ -191,11 +191,11 @@ func showMainMenu(config *AppConfig) error {
 			huh.NewSelect[string]().
 				Title("Select Tool").
 				Options(
-					huh.NewOption("📄 PDF Production", "PDF"),
-					huh.NewOption("🖼️  Image Lab", "Image"),
+					huh.NewOption("📄 PDF Operation", "PDF"),
+					huh.NewOption("🖼️ Image Lab", "Image"),
 					huh.NewOption("📦 Smart Archive", "Archive"),
 					huh.NewOption("🔍 OCR Master", "OCR"),
-					huh.NewOption("📸 Screen Master", "Screen"),
+					huh.NewOption("📸 ScreenShot", "Screen"),
 					huh.NewOption("📡 LAN Sharing", "LAN"),
 					huh.NewOption("🚪 Quit", "Quit"),
 				).
