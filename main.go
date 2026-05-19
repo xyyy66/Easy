@@ -92,6 +92,23 @@ func renderHeader() {
 	fmt.Println("\n  " + t + d + "\n")
 }
 
+func renderGradientSuccess(msg string) {
+	// Mint to Cyan gradient effect
+	mint := lipgloss.Color("#40a02b")
+	cyan := lipgloss.Color("#179299")
+	
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(mint).
+		Padding(0, 2).
+		Bold(true)
+	
+	text := lipgloss.NewStyle().Foreground(mint).Render("✓ SUCCESS ") + 
+	       lipgloss.NewStyle().Foreground(cyan).Render("• "+msg)
+	
+	fmt.Println("\n" + style.Render(text))
+}
+
 func main() {
 	config := &AppConfig{}
 
@@ -129,11 +146,17 @@ func main() {
 			menuErr = showScreenMenu(config)
 		}
 
+		// ESC support: If user aborted sub-menu, go back to main menu
 		if menuErr != nil {
 			if menuErr == huh.ErrUserAborted {
-				continue
+				continue 
 			}
 			fmt.Println("\n" + errorBox.Render(fmt.Sprintf("ERROR: %v", menuErr)))
+			continue
+		}
+		
+		// If Action is "Back", continue to main menu
+		if config.Action == "Back" {
 			continue
 		}
 
@@ -151,7 +174,7 @@ func main() {
 			}
 		} else {
 			if config.Module != "LAN" && config.Module != "Quit" {
-				fmt.Println("\n" + successBox.Render("COMPLETED SUCCESSFULLY"))
+				renderGradientSuccess("COMPLETED SUCCESSFULLY")
 			}
 		}
 
@@ -193,12 +216,16 @@ func showPDFMenu(config *AppConfig) error {
 					huh.NewOption("Optimize Size", "Compress"),
 					huh.NewOption("Export to Image", "Convert"),
 					huh.NewOption("Images to PDF", "ImgToPDF"),
+					huh.NewOption("<- Back", "Back"),
 				).
 				Value(&config.Action),
 		),
 	).Run()
 	if err != nil {
 		return err
+	}
+	if config.Action == "Back" {
+		return nil
 	}
 
 	inputTitle := "Select PDF"
@@ -254,12 +281,16 @@ func showImageMenu(config *AppConfig) error {
 					huh.NewOption("Modern WebP", "WebP"),
 					huh.NewOption("Fast Resize", "Resize"),
 					huh.NewOption("Privacy Strip", "Strip"),
+					huh.NewOption("<- Back", "Back"),
 				).
 				Value(&config.Action),
 		),
 	).Run()
 	if err != nil {
 		return err
+	}
+	if config.Action == "Back" {
+		return nil
 	}
 
 	config.InputFiles = ""
@@ -300,12 +331,18 @@ func showArchiveMenu(config *AppConfig) error {
 					huh.NewOption("ZIP (Standard)", "zip"),
 					huh.NewOption("Tar.gz (Unix)", "tar.gz"),
 					huh.NewOption("7Z (Maximum)", "7z"),
+					huh.NewOption("<- Back", "Back"),
 				).
 				Value(&config.ArchiveFormat),
 		),
 	).Run()
 	if err != nil {
 		return err
+	}
+
+	if config.ArchiveFormat == "Back" {
+		config.Action = "Back"
+		return nil
 	}
 
 	config.InputFiles = ""
@@ -915,12 +952,18 @@ func showOCRMenu(config *AppConfig) error {
 			Options(
 				huh.NewOption("Existing Image", "File"),
 				huh.NewOption("Capture Area", "Capture"),
+				huh.NewOption("<- Back", "Back"),
 			).Value(&config.OCRMode),
-	)).Run()
-	if err != nil {
-		return err
-	}
+			),
+			).Run()
+			if err != nil {
+			return err
+			}
 
+			if config.OCRMode == "Back" {
+			config.Action = "Back"
+			return nil
+			}
 	if config.OCRMode == "File" {
 		err = huh.NewForm(huh.NewGroup(
 			huh.NewInput().Title("Select Image").Placeholder("Drag here or Enter for Finder").Value(&config.InputFiles),
@@ -1009,7 +1052,7 @@ do {
 	_ = pbCmd.Run()
 
 	// Display snippet
-	fmt.Println("\n" + successBox.Render("TEXT COPIED TO CLIPBOARD"))
+	renderGradientSuccess("TEXT COPIED TO CLIPBOARD")
 
 	// Show a preview of the text
 	preview := result
@@ -1038,11 +1081,22 @@ func showScreenMenu(config *AppConfig) error {
 				huh.NewOption("Mono", "Mono"),
 				huh.NewOption("Sepia", "Sepia"),
 				huh.NewOption("Chrome", "Chrome"),
+				huh.NewOption("<- Back", "Back"),
 			).Value(&config.FilterType),
+			),
+			).Run()
+
+			if err == nil && config.FilterType == "Back" {
+				config.Action = "Back"
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+	return huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Save To").Value(&config.OutputFile),
 	)).Run()
-
-	return err
 }
 
 func handleScreen(config *AppConfig) error {
@@ -1105,7 +1159,7 @@ if let filter = filter {
 		}
 	}
 
-	fmt.Println("\n" + successBox.Render("SCREENSHOT SAVED"))
+	renderGradientSuccess("SCREENSHOT SAVED")
 	fmt.Println("  " + descStyle.Render(out))
 	return nil
 }
