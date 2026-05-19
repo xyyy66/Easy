@@ -347,7 +347,7 @@ func showArchiveMenu(config *AppConfig) error {
 
 	config.InputFiles = ""
 	err = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Target").Placeholder("Drag here or Enter for Finder").Value(&config.InputFiles),
+		huh.NewInput().Title("Select Items").Placeholder("Drag files/folders or Enter for Finder").Value(&config.InputFiles),
 	)).Run()
 	if err != nil {
 		return err
@@ -388,12 +388,20 @@ func openFinder(dialogType string) (string, error) {
 		`
 	case "file_or_folder":
 		script = `
-		set dialogResult to display dialog "What do you want to select?" buttons {"File", "Folder", "Cancel"} default button "Folder"
-		if button returned of dialogResult is "Folder" then
-			return POSIX path of (choose folder with prompt "Select a folder")
+		set dialogResult to display dialog "What do you want to archive?" buttons {"Files", "Folders", "Cancel"} default button "Files"
+		set pathList to ""
+		if button returned of dialogResult is "Folders" then
+			set theItems to choose folder with prompt "Select folders to archive" with multiple selections allowed
 		else
-			return POSIX path of (choose file with prompt "Select a file")
+			set theItems to choose file with prompt "Select files to archive" with multiple selections allowed
 		end if
+		repeat with anItem in theItems
+			set pathList to pathList & POSIX path of anItem & ","
+		end repeat
+		if (count of pathList) > 0 then
+			set pathList to text 1 thru -2 of pathList
+		end if
+		return pathList
 		`
 	default: // "file"
 		script = `return POSIX path of (choose file with prompt "Select a file")`
@@ -654,7 +662,11 @@ func handleImage(config *AppConfig) error {
 }
 
 func handleArchive(config *AppConfig) error {
-	in := cleanPath(config.InputFiles)
+	rawPaths := strings.Split(config.InputFiles, ",")
+	var paths []string
+	for _, p := range rawPaths {
+		paths = append(paths, cleanPath(p))
+	}
 	out := cleanPath(config.OutputFile)
 
 	var cmd *exec.Cmd
@@ -665,27 +677,25 @@ func handleArchive(config *AppConfig) error {
 		if config.ArchivePassword != "" {
 			args = append(args, "-e", "-P", config.ArchivePassword)
 		}
-		args = append(args, out, filepath.Base(in))
+		args = append(args, out)
+		args = append(args, paths...)
 		cmd = exec.Command("zip", args...)
-		cmd.Dir = filepath.Dir(in) // run in parent to avoid full absolute paths
 
 	case "tar.gz":
-		// Tar doesn't support built-in password easily, so we just compress
 		args := []string{"-czvf", out, "--exclude=.DS_Store", "--exclude=__MACOSX"}
-		args = append(args, filepath.Base(in))
+		args = append(args, paths...)
 		cmd = exec.Command("tar", args...)
-		cmd.Dir = filepath.Dir(in)
 
 	case "7z":
-		// Requires p7zip to be installed
 		_, err := exec.LookPath("7z")
 		if err != nil {
 			return fmt.Errorf("7z command not found. Please install via Homebrew: brew install p7zip")
 		}
-		args := []string{"a", out, in, "-xr!*.DS_Store", "-xr!__MACOSX"}
+		args := []string{"a", out, "-xr!*.DS_Store", "-xr!__MACOSX"}
 		if config.ArchivePassword != "" {
 			args = append(args, fmt.Sprintf("-p%s", config.ArchivePassword))
 		}
+		args = append(args, paths...)
 		cmd = exec.Command("7z", args...)
 	}
 
