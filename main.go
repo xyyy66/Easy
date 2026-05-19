@@ -354,7 +354,26 @@ func showArchiveMenu(config *AppConfig) error {
 	}
 
 	if strings.TrimSpace(config.InputFiles) == "" {
-		paths, err := openFinder("file_or_folder")
+		var selectionType string
+		err = huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select Type").
+				Options(
+					huh.NewOption("Files", "files"),
+					huh.NewOption("Folders", "folders"),
+					huh.NewOption("<- Back", "Back"),
+				).
+				Value(&selectionType),
+		)).Run()
+		if err != nil {
+			return err
+		}
+		if selectionType == "Back" {
+			config.Action = "Back"
+			return nil
+		}
+
+		paths, err := openFinder(selectionType)
 		if err != nil {
 			return err
 		}
@@ -386,24 +405,19 @@ func openFinder(dialogType string) (string, error) {
 		end if
 		return pathList
 		`
-	case "file_or_folder":
+	case "folders":
 		script = `
-		set dialogResult to display dialog "What do you want to archive?" buttons {"Files", "Folders", "Cancel"} default button "Files"
+		set theFolders to choose folder with prompt "Select folders" with multiple selections allowed
 		set pathList to ""
-		if button returned of dialogResult is "Folders" then
-			set theItems to choose folder with prompt "Select folders to archive" with multiple selections allowed
-		else
-			set theItems to choose file with prompt "Select files to archive" with multiple selections allowed
-		end if
-		repeat with anItem in theItems
-			set pathList to pathList & POSIX path of anItem & ","
+		repeat with aFolder in theFolders
+			set pathList to pathList & POSIX path of aFolder & ","
 		end repeat
 		if (count of pathList) > 0 then
 			set pathList to text 1 thru -2 of pathList
 		end if
 		return pathList
 		`
-	default: // "file"
+	default: // "file" (single)
 		script = `return POSIX path of (choose file with prompt "Select a file")`
 	}
 
@@ -728,7 +742,26 @@ func showLANMenu(config *AppConfig) error {
 	}
 
 	if strings.TrimSpace(config.InputFiles) == "" {
-		paths, err := openFinder("file_or_folder")
+		var selectionType string
+		err = huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select Type").
+				Options(
+					huh.NewOption("File", "file"),
+					huh.NewOption("Folder", "folders"),
+					huh.NewOption("<- Back", "Back"),
+				).
+				Value(&selectionType),
+		)).Run()
+		if err != nil {
+			return err
+		}
+		if selectionType == "Back" {
+			config.Action = "Back"
+			return nil
+		}
+
+		paths, err := openFinder(selectionType)
 		if err != nil {
 			return err
 		}
