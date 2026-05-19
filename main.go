@@ -44,54 +44,119 @@ type AppConfig struct {
 	OCRMode         string
 }
 
+// Theme Colors
+var (
+	purple = lipgloss.Color("#8839ef")
+	cyan   = lipgloss.Color("#179299")
+	green  = lipgloss.Color("#40a02b")
+	red    = lipgloss.Color("#d20f39")
+	gray   = lipgloss.Color("#737994")
+)
+
+var (
+	titleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#EFF1F5")).
+			Background(purple).
+			Padding(0, 1).
+			Bold(true)
+
+	descStyle = lipgloss.NewStyle().
+			Foreground(gray).
+			Italic(true)
+
+	boxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(purple).
+			Padding(1, 2).
+			Margin(1, 0)
+
+	successBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(green).
+			Foreground(green).
+			Padding(0, 1).
+			Bold(true)
+
+	errorBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(red).
+			Foreground(red).
+			Padding(0, 1).
+			Bold(true)
+)
+
+func renderHeader() {
+	fmt.Print("\033[H\033[2J") // Clear screen
+	t := titleStyle.Render(" macOS Efficiency Toolkit ")
+	d := descStyle.Render(" v1.2 • Pro Suite ")
+	fmt.Println("\n  " + t + d + "\n")
+}
+
 func main() {
 	config := &AppConfig{}
 
-	// Define styles
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Padding(1)
-	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true).Padding(1)
-
-	// Infinite loop to keep returning to main menu
 	for {
+		renderHeader()
 		err := showMainMenu(config)
 		if err != nil {
 			if err == huh.ErrUserAborted {
-				fmt.Println("\nExiting application. Goodbye!")
+				fmt.Println("\n  " + descStyle.Render("Session ended. Goodbye!"))
 				break
 			}
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error: %v", err)))
+			fmt.Println("\n" + errorBox.Render(fmt.Sprintf("ERROR: %v", err)))
 			continue
 		}
 
 		if config.Module == "Quit" {
-			fmt.Println("\nExiting application. Goodbye!")
+			fmt.Println("\n  " + descStyle.Render("Session ended. Goodbye!"))
 			break
 		}
 
-		// Process user selections
-		if config.Module == "LAN" {
-			err = handleLANSharing(config)
-		} else {
-			err = runAction(config)
+		// Routing to sub-menus
+		var menuErr error
+		switch config.Module {
+		case "PDF":
+			menuErr = showPDFMenu(config)
+		case "Image":
+			menuErr = showImageMenu(config)
+		case "Archive":
+			menuErr = showArchiveMenu(config)
+		case "LAN":
+			menuErr = showLANMenu(config)
+		case "OCR":
+			menuErr = showOCRMenu(config)
+		case "Screen":
+			menuErr = showScreenMenu(config)
 		}
 
-		if err != nil {
-			if err == huh.ErrUserAborted {
+		if menuErr != nil {
+			if menuErr == huh.ErrUserAborted {
 				continue
 			}
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Execution Failed: %v", err)))
+			fmt.Println("\n" + errorBox.Render(fmt.Sprintf("ERROR: %v", menuErr)))
+			continue
+		}
+
+		// Process user selections
+		var runErr error
+		if config.Module == "LAN" {
+			runErr = handleLANSharing(config)
 		} else {
-			if config.Module != "LAN" {
-				fmt.Println(successStyle.Render("Success! Task completed successfully."))
-			} else {
-				fmt.Println(successStyle.Render("LAN Sharing stopped successfully."))
+			runErr = runAction(config)
+		}
+
+		if runErr != nil {
+			if runErr != huh.ErrUserAborted {
+				fmt.Println("\n" + errorBox.Render(fmt.Sprintf("FAILED: %v", runErr)))
+			}
+		} else {
+			if config.Module != "LAN" && config.Module != "Quit" {
+				fmt.Println("\n" + successBox.Render("COMPLETED SUCCESSFULLY"))
 			}
 		}
 
-		// Wait before looping back
-		fmt.Print("Press Enter to return to main menu...")
+		fmt.Print("\n  " + descStyle.Render("Press Enter to continue..."))
 		bufio.NewReader(os.Stdin).ReadBytes('\n')
-		fmt.Println()
 	}
 }
 
@@ -100,59 +165,33 @@ func showMainMenu(config *AppConfig) error {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Select Module").
+				Title("Select Tool").
 				Options(
-					huh.NewOption("📄 PDF Production Master", "PDF"),
+					huh.NewOption("📄 PDF Production", "PDF"),
 					huh.NewOption("🖼️  Image Lab", "Image"),
-					huh.NewOption("📦 Smart Archive Center", "Archive"),
-					huh.NewOption("🔍 OCR Master (Text Extract)", "OCR"),
-					huh.NewOption("📸 Screen Master (Pro Capture)", "Screen"),
-					huh.NewOption("📡 LAN File Sharing", "LAN"),
+					huh.NewOption("📦 Smart Archive", "Archive"),
+					huh.NewOption("🔍 OCR Master", "OCR"),
+					huh.NewOption("📸 Screen Master", "Screen"),
+					huh.NewOption("📡 LAN Sharing", "LAN"),
 					huh.NewOption("🚪 Quit", "Quit"),
 				).
 				Value(&config.Module),
 		),
 	)
 
-	err := form.Run()
-	if err != nil {
-		return err
-	}
-
-	if config.Module == "Quit" {
-		return nil
-	}
-
-	// Dynamic sub-menus based on Module
-	switch config.Module {
-	case "PDF":
-		return showPDFMenu(config)
-	case "Image":
-		return showImageMenu(config)
-	case "Archive":
-		return showArchiveMenu(config)
-	case "LAN":
-		return showLANMenu(config)
-	case "OCR":
-		return showOCRMenu(config)
-	case "Screen":
-		return showScreenMenu(config)
-	}
-
-	return nil
+	return form.Run()
 }
 
 func showPDFMenu(config *AppConfig) error {
-	// 1. Select Action
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("PDF Actions").
 				Options(
-					huh.NewOption("Merge PDFs", "Merge"),
-					huh.NewOption("Split PDF", "Split"),
-					huh.NewOption("Compress PDF", "Compress"),
-					huh.NewOption("Convert PDF to Image", "Convert"),
+					huh.NewOption("Merge Files", "Merge"),
+					huh.NewOption("Split Pages", "Split"),
+					huh.NewOption("Optimize Size", "Compress"),
+					huh.NewOption("Export to Image", "Convert"),
 					huh.NewOption("Images to PDF", "ImgToPDF"),
 				).
 				Value(&config.Action),
@@ -162,17 +201,16 @@ func showPDFMenu(config *AppConfig) error {
 		return err
 	}
 
-	// 2. Capture Input Files (with Finder option)
-	inputTitle := "Input PDF File (Leave blank to select via Finder)"
+	inputTitle := "Select PDF"
 	dialogType := "file"
 	if config.Action == "Merge" || config.Action == "ImgToPDF" {
-		inputTitle = "Input Files (Comma-separated, or leave blank for Finder)"
+		inputTitle = "Select Files"
 		dialogType = "files"
 	}
 
 	config.InputFiles = ""
 	err = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title(inputTitle).Value(&config.InputFiles),
+		huh.NewInput().Title(inputTitle).Placeholder("Drag here or press Enter for Finder").Value(&config.InputFiles),
 	)).Run()
 	if err != nil {
 		return err
@@ -186,38 +224,36 @@ func showPDFMenu(config *AppConfig) error {
 		config.InputFiles = paths
 	}
 
-	// 3. Output Configuration
 	config.OutputFile = generateDefaultOutput(config.InputFiles, config.Action, "")
 	var fields []huh.Field
 
 	if config.Action == "Split" {
 		config.PageRange = "1"
-		fields = append(fields, huh.NewInput().Title("Page Range (e.g., '1-5, 8')").Value(&config.PageRange))
+		fields = append(fields, huh.NewInput().Title("Page Range").Placeholder("e.g. 1-5, 8").Value(&config.PageRange))
 	} else if config.Action == "Compress" {
 		config.CompressionMode = "/default"
-		fields = append(fields, huh.NewSelect[string]().Title("Compression Level").
+		fields = append(fields, huh.NewSelect[string]().Title("Level").
 			Options(
 				huh.NewOption("Balanced", "/default"),
 				huh.NewOption("High Quality", "/prepress"),
-				huh.NewOption("Extreme Compression", "/screen"),
+				huh.NewOption("Maximum", "/screen"),
 			).Value(&config.CompressionMode))
 	}
 
-	fields = append(fields, huh.NewInput().Title("Output File/Directory").Value(&config.OutputFile))
+	fields = append(fields, huh.NewInput().Title("Save To").Value(&config.OutputFile))
 
 	return huh.NewForm(huh.NewGroup(fields...)).Run()
 }
 
 func showImageMenu(config *AppConfig) error {
-	// 1. Select Action
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Image Actions").
+				Title("Image Lab").
 				Options(
-					huh.NewOption("Convert to WebP", "WebP"),
-					huh.NewOption("Smart Resize", "Resize"),
-					huh.NewOption("Strip Metadata (Privacy)", "Strip"),
+					huh.NewOption("Modern WebP", "WebP"),
+					huh.NewOption("Fast Resize", "Resize"),
+					huh.NewOption("Privacy Strip", "Strip"),
 				).
 				Value(&config.Action),
 		),
@@ -226,10 +262,9 @@ func showImageMenu(config *AppConfig) error {
 		return err
 	}
 
-	// 2. Capture Input Image
 	config.InputFiles = ""
 	err = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Input Image (Leave blank to select via Finder)").Value(&config.InputFiles),
+		huh.NewInput().Title("Select Image").Placeholder("Drag here or Enter for Finder").Value(&config.InputFiles),
 	)).Run()
 	if err != nil {
 		return err
@@ -243,30 +278,28 @@ func showImageMenu(config *AppConfig) error {
 		config.InputFiles = paths
 	}
 
-	// 3. Output Configuration
 	config.OutputFile = generateDefaultOutput(config.InputFiles, config.Action, "")
 	var fields []huh.Field
 
 	if config.Action == "Resize" {
 		config.ImageWidth = "800"
-		fields = append(fields, huh.NewInput().Title("Target Width (px)").Value(&config.ImageWidth))
+		fields = append(fields, huh.NewInput().Title("Width (px)").Value(&config.ImageWidth))
 	}
-	fields = append(fields, huh.NewInput().Title("Output Image").Value(&config.OutputFile))
+	fields = append(fields, huh.NewInput().Title("Save To").Value(&config.OutputFile))
 
 	return huh.NewForm(huh.NewGroup(fields...)).Run()
 }
 
 func showArchiveMenu(config *AppConfig) error {
 	config.Action = "Archive"
-	// 1. Archive Format
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Archive Format").
+				Title("Format").
 				Options(
-					huh.NewOption("Standard ZIP (.zip)", "zip"),
-					huh.NewOption("Linux-Friendly TarGz (.tar.gz)", "tar.gz"),
-					huh.NewOption("High Compression (.7z)", "7z"),
+					huh.NewOption("ZIP (Standard)", "zip"),
+					huh.NewOption("Tar.gz (Unix)", "tar.gz"),
+					huh.NewOption("7Z (Maximum)", "7z"),
 				).
 				Value(&config.ArchiveFormat),
 		),
@@ -275,10 +308,9 @@ func showArchiveMenu(config *AppConfig) error {
 		return err
 	}
 
-	// 2. Target File/Folder
 	config.InputFiles = ""
 	err = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Target Folder/File (Leave blank to select via Finder)").Value(&config.InputFiles),
+		huh.NewInput().Title("Target").Placeholder("Drag here or Enter for Finder").Value(&config.InputFiles),
 	)).Run()
 	if err != nil {
 		return err
@@ -292,17 +324,15 @@ func showArchiveMenu(config *AppConfig) error {
 		config.InputFiles = paths
 	}
 
-	// 3. Output Configuration
 	config.OutputFile = generateDefaultOutput(config.InputFiles, config.Action, config.ArchiveFormat)
 	config.ArchivePassword = ""
 	err = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Output Archive Name").Value(&config.OutputFile),
-		huh.NewInput().Title("Password (Leave empty for none)").EchoMode(huh.EchoModePassword).Value(&config.ArchivePassword),
+		huh.NewInput().Title("Archive Name").Value(&config.OutputFile),
+		huh.NewInput().Title("Password").EchoMode(huh.EchoModePassword).Placeholder("Optional").Value(&config.ArchivePassword),
 	)).Run()
 
 	return err
 }
-
 // openFinder triggers a macOS native AppleScript prompt
 func openFinder(dialogType string) (string, error) {
 	var script string
@@ -410,7 +440,11 @@ func runAction(config *AppConfig) error {
 		}
 	}
 
-	err := spinner.New().Title("Processing...").Action(actionFunc).Run()
+	err := spinner.New().
+		Title("Processing Task...").
+		Style(lipgloss.NewStyle().Foreground(purple)).
+		Action(actionFunc).
+		Run()
 	if err != nil {
 		return err
 	}
@@ -637,10 +671,10 @@ func showLANMenu(config *AppConfig) error {
 	config.LANTunnel = false
 
 	err := huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Target Folder/File (Leave blank to select via Finder)").Value(&config.InputFiles),
+		huh.NewInput().Title("Target").Placeholder("Drag here or Enter for Finder").Value(&config.InputFiles),
 		huh.NewInput().Title("Port").Value(&config.LANPort),
-		huh.NewConfirm().Title("Enable HTTPS (May trigger Safari warning)").Value(&config.LANHTTPS),
-		huh.NewConfirm().Title("Enable Public Tunnel (Bypass Campus/AP Isolation)").Value(&config.LANTunnel),
+		huh.NewConfirm().Title("HTTPS Mode").Value(&config.LANHTTPS),
+		huh.NewConfirm().Title("Public Tunnel").Value(&config.LANTunnel),
 	)).Run()
 	if err != nil {
 		return err
@@ -836,31 +870,33 @@ func handleLANSharing(config *AppConfig) error {
 	// --- Minimalist UI ---
 	cardStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(purple).
 		Padding(1, 4).
 		Align(lipgloss.Center)
 
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Underline(true)
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#EFF1F5")).Background(purple).Padding(0, 1).Bold(true)
+	urlStyle := lipgloss.NewStyle().Foreground(green).Underline(true)
 	badgeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("0")).
-		Background(lipgloss.Color("62")).
+		Foreground(lipgloss.Color("#EFF1F5")).
+		Background(cyan).
 		Padding(0, 1)
 
 	dashboard := lipgloss.JoinVertical(lipgloss.Center,
 		titleStyle.Render("SHARE READY"),
+		"",
 		badgeStyle.Render(modeLabel),
 		qrStr,
 		"",
 		urlStyle.Render(bestURL),
 		"",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(filepath.Base(in)),
+		lipgloss.NewStyle().Foreground(gray).Render(filepath.Base(in)),
 	)
 
 	fmt.Println("\n" + cardStyle.Render(dashboard) + "\n")
 
 	var confirm bool
-	huh.NewForm(huh.NewGroup(huh.NewConfirm().Title("Stop Sharing?").Value(&confirm))).Run()
+	huh.NewForm(huh.NewGroup(huh.NewConfirm().Title("Stop Sharing?").Affirmative("End Session").Negative("Stay Online").Value(&confirm))).Run()
+
 
 	server.Shutdown(context.Background())
 	if tunnelCmd != nil && tunnelCmd.Process != nil {
@@ -877,8 +913,8 @@ func showOCRMenu(config *AppConfig) error {
 	err := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("OCR Source").
 			Options(
-				huh.NewOption("Select Image File", "File"),
-				huh.NewOption("Capture Screen Area", "Capture"),
+				huh.NewOption("Existing Image", "File"),
+				huh.NewOption("Capture Area", "Capture"),
 			).Value(&config.OCRMode),
 	)).Run()
 	if err != nil {
@@ -887,7 +923,7 @@ func showOCRMenu(config *AppConfig) error {
 
 	if config.OCRMode == "File" {
 		err = huh.NewForm(huh.NewGroup(
-			huh.NewInput().Title("Input Image (Leave blank for Finder)").Value(&config.InputFiles),
+			huh.NewInput().Title("Select Image").Placeholder("Drag here or Enter for Finder").Value(&config.InputFiles),
 		)).Run()
 		if err != nil {
 			return err
@@ -973,11 +1009,7 @@ do {
 	_ = pbCmd.Run()
 
 	// Display snippet
-	fmt.Println(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("42")).
-		Bold(true).
-		Padding(1).
-		Render("\n✅ Text extracted and copied to clipboard!"))
+	fmt.Println("\n" + successBox.Render("TEXT COPIED TO CLIPBOARD"))
 
 	// Show a preview of the text
 	preview := result
@@ -986,28 +1018,28 @@ do {
 	}
 	fmt.Println(lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(gray).
 		Padding(0, 1).
+		Foreground(gray).
 		Render(preview))
 
 	return nil
-}
-
+	}
 func showScreenMenu(config *AppConfig) error {
 	config.Action = "Capture"
 	config.FilterType = "None"
 	config.OutputFile = filepath.Join(os.Getenv("HOME"), "Desktop", "Screenshot_"+time.Now().Format("20060102_150405")+".png")
 
 	err := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Title("Post-Processing Effect").
+		huh.NewSelect[string]().Title("Effect").
 			Options(
-				huh.NewOption("Original (No Filter)", "None"),
-				huh.NewOption("Privacy Blur (Gaussian)", "Blur"),
-				huh.NewOption("Classic Grayscale", "Mono"),
-				huh.NewOption("Vintage Sepia", "Sepia"),
-				huh.NewOption("High Contrast (Chrome)", "Chrome"),
+				huh.NewOption("Natural", "None"),
+				huh.NewOption("Privacy Blur", "Blur"),
+				huh.NewOption("Mono", "Mono"),
+				huh.NewOption("Sepia", "Sepia"),
+				huh.NewOption("Chrome", "Chrome"),
 			).Value(&config.FilterType),
-		huh.NewInput().Title("Save Destination").Value(&config.OutputFile),
+		huh.NewInput().Title("Save To").Value(&config.OutputFile),
 	)).Run()
 
 	return err
@@ -1073,7 +1105,8 @@ if let filter = filter {
 		}
 	}
 
-	fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("\n✅ Screenshot saved: " + out))
+	fmt.Println("\n" + successBox.Render("SCREENSHOT SAVED"))
+	fmt.Println("  " + descStyle.Render(out))
 	return nil
 }
 
