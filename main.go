@@ -88,7 +88,7 @@ var (
 
 func renderHeader() {
 	fmt.Print("\033[H\033[2J") // Clear screen
-	t := titleStyle.Render("Easy: A efficient toolkit")
+	t := titleStyle.Render(" Easy: macOS Efficiency Toolkit ")
 	d := descStyle.Render(" v1.2 • Pro Suite ")
 	fmt.Println("\n  " + t + d + "\n")
 }
@@ -282,6 +282,7 @@ func showPDFMenu(config *AppConfig) error {
 }
 
 func showImageMenu(config *AppConfig) error {
+	config.FilterType = "None"
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
@@ -290,6 +291,7 @@ func showImageMenu(config *AppConfig) error {
 					huh.NewOption("Modern WebP", "WebP"),
 					huh.NewOption("Fast Resize", "Resize"),
 					huh.NewOption("Privacy Strip", "Strip"),
+					huh.NewOption("Artistic Filter", "Filter"),
 					huh.NewOption("<- Back", "Back"),
 				).
 				Value(&config.Action),
@@ -300,6 +302,21 @@ func showImageMenu(config *AppConfig) error {
 	}
 	if config.Action == "Back" {
 		return nil
+	}
+
+	if config.Action == "Filter" {
+		err = huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().Title("Effect").
+				Options(
+					huh.NewOption("Gaussian Blur", "Blur"),
+					huh.NewOption("Classic Mono", "Mono"),
+					huh.NewOption("Vintage Sepia", "Sepia"),
+					huh.NewOption("Vibrant Chrome", "Chrome"),
+				).Value(&config.FilterType),
+		)).Run()
+		if err != nil {
+			return err
+		}
 	}
 
 	config.InputFiles = ""
@@ -708,8 +725,55 @@ func handleImage(config *AppConfig) error {
 		// Strip EXIF profile
 		cmd := exec.Command("sips", "-d", "profile", "--deleteColorManagementProperties", in, "--out", out)
 		return cmd.Run()
+	case "Filter":
+		return applyFilter(in, out, config.FilterType)
 	}
 	return nil
+}
+
+func applyFilter(in, out, effect string) error {
+	swiftScript := `
+import Quartz
+import CoreImage
+import AppKit
+
+let args = CommandLine.arguments
+let inPath = args[1]
+let outPath = args[2]
+let effect = args[3]
+
+guard let image = NSImage(contentsOfFile: inPath),
+      let tiff = image.tiffRepresentation,
+      let ciImage = CIImage(data: tiff) else { exit(1) }
+
+var filter: CIFilter?
+
+switch effect {
+case "Blur":
+    filter = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 10.0])
+case "Mono":
+    filter = CIFilter(name: "CIPhotoEffectMono")
+case "Sepia":
+    filter = CIFilter(name: "CISepiaTone", parameters: ["inputIntensity": 1.0])
+case "Chrome":
+    filter = CIFilter(name: "CIPhotoEffectChrome")
+default:
+    break
+}
+
+if let filter = filter {
+    filter.setValue(ciImage, forKey: kCIInputImageKey)
+    if let output = filter.outputImage {
+        let rep = NSBitmapImageRep(ciImage: output)
+        if let data = rep.representation(using: .png, properties: [:]) {
+            try? data.write(to: URL(fileURLWithPath: outPath))
+        }
+    }
+}
+`
+	cmd := exec.Command("swift", "-", in, out, effect)
+	cmd.Stdin = strings.NewReader(swiftScript)
+	return cmd.Run()
 }
 
 func handleArchive(config *AppConfig) error {
@@ -1193,48 +1257,8 @@ func handleScreen(config *AppConfig) error {
 
 	// Step 2: Apply Filters via Swift CoreImage if requested
 	if config.FilterType != "None" {
-		swiftScript := `
-import Quartz
-import CoreImage
-import AppKit
-
-let args = CommandLine.arguments
-let path = args[1]
-let effect = args[2]
-
-guard let image = NSImage(contentsOfFile: path),
-      let tiff = image.tiffRepresentation,
-      let ciImage = CIImage(data: tiff) else { exit(1) }
-
-var filter: CIFilter?
-
-switch effect {
-case "Blur":
-    filter = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 10.0])
-case "Mono":
-    filter = CIFilter(name: "CIPhotoEffectMono")
-case "Sepia":
-    filter = CIFilter(name: "CISepiaTone", parameters: ["inputIntensity": 1.0])
-case "Chrome":
-    filter = CIFilter(name: "CIPhotoEffectChrome")
-default:
-    break
-}
-
-if let filter = filter {
-    filter.setValue(ciImage, forKey: kCIInputImageKey)
-    if let output = filter.outputImage {
-        let rep = NSBitmapImageRep(ciImage: output)
-        if let data = rep.representation(using: .png, properties: [:]) {
-            try? data.write(to: URL(fileURLWithPath: path))
-        }
-    }
-}
-`
 		fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Render("🧪 Applying " + config.FilterType + " effect..."))
-		filterCmd := exec.Command("swift", "-", out, config.FilterType)
-		filterCmd.Stdin = strings.NewReader(swiftScript)
-		if err := filterCmd.Run(); err != nil {
+		if err := applyFilter(out, out, config.FilterType); err != nil {
 			return fmt.Errorf("failed to apply filter: %v", err)
 		}
 	}

@@ -1,4 +1,4 @@
-# ⚡️ macOS Efficiency Toolkit (Pro Suite)
+# ⚡️ Easy: macOS Efficiency Toolkit (Pro Suite)
 
 A highly-engineered, Terminal-based Swiss Army knife designed exclusively for macOS. Built with **Go** and the **Charmbracelet** ecosystem (`huh`, `lipgloss`), this toolkit tightly integrates with native macOS frameworks (Swift, PDFKit, Vision, CoreImage) to deliver blazing-fast, uncompromising performance without bloated third-party GUI apps.
 
