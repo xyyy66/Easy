@@ -42,6 +42,7 @@ type AppConfig struct {
 	ScreenAction    string
 	FilterType      string
 	OCRMode         string
+	ImgPrefix       string
 }
 
 // Theme Colors
@@ -87,7 +88,7 @@ var (
 
 func renderHeader() {
 	fmt.Print("\033[H\033[2J") // Clear screen
-	t := titleStyle.Render(" macOS Efficiency Toolkit ")
+	t := titleStyle.Render("Easy: A efficient toolkit")
 	d := descStyle.Render(" v1.2 • Pro Suite ")
 	fmt.Println("\n  " + t + d + "\n")
 }
@@ -216,6 +217,7 @@ func showPDFMenu(config *AppConfig) error {
 					huh.NewOption("Optimize Size", "Compress"),
 					huh.NewOption("Export to Image", "Convert"),
 					huh.NewOption("Images to PDF", "ImgToPDF"),
+					huh.NewOption("Extract Images", "Extract"),
 					huh.NewOption("<- Back", "Back"),
 				).
 				Value(&config.Action),
@@ -252,11 +254,18 @@ func showPDFMenu(config *AppConfig) error {
 	}
 
 	config.OutputFile = generateDefaultOutput(config.InputFiles, config.Action, "")
+	config.ImgPrefix = "img"
 	var fields []huh.Field
 
 	if config.Action == "Split" {
 		config.PageRange = "1"
 		fields = append(fields, huh.NewInput().Title("Page Range").Placeholder("e.g. 1-5, 8").Value(&config.PageRange))
+	} else if config.Action == "Extract" {
+		config.PageRange = ""
+		fields = append(fields, 
+			huh.NewInput().Title("Page Range").Placeholder("Leave blank for all, or e.g. 1-5").Value(&config.PageRange),
+			huh.NewInput().Title("Image Prefix").Value(&config.ImgPrefix),
+		)
 	} else if config.Action == "Compress" {
 		config.CompressionMode = "/default"
 		fields = append(fields, huh.NewSelect[string]().Title("Level").
@@ -448,6 +457,8 @@ func generateDefaultOutput(input string, action string, format string) string {
 		return base + ".pdf"
 	case "Split":
 		return base + "_split.pdf"
+	case "Extract":
+		return base + "_extracted_images"
 	case "Compress":
 		return base + "_compressed.pdf"
 	case "Convert":
@@ -587,7 +598,33 @@ func handlePDF(config *AppConfig) error {
 			return fmt.Errorf("macOS native image to PDF failed: %v", err)
 		}
 		return nil
-	case "Split":
+
+		case "Extract":
+		in := cleanPath(config.InputFiles)
+		outDir := cleanPath(config.OutputFile)
+		os.MkdirAll(outDir, 0755)
+
+		args := []string{"-j", "-png"} // -j: attempt to write JPEGs, -png: fallback/output PNG
+
+		if config.PageRange != "" {
+			parts := strings.Split(config.PageRange, "-")
+			if len(parts) == 2 {
+				args = append(args, "-f", parts[0], "-l", parts[1])
+			} else if len(parts) == 1 {
+				args = append(args, "-f", parts[0], "-l", parts[0])
+			}
+		}
+
+		outputPath := filepath.Join(outDir, config.ImgPrefix)
+		args = append(args, in, outputPath)
+
+		cmd := exec.Command("pdfimages", args...)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to extract images: %v. Ensure Poppler is installed: brew install poppler", err)
+		}
+		return nil
+
+		case "Split":
 		in := cleanPath(config.InputFiles)
 
 		swiftScript := `
