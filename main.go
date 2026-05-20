@@ -779,26 +779,46 @@ if let filter = filter {
 func handleArchive(config *AppConfig) error {
 	rawPaths := strings.Split(config.InputFiles, ",")
 	var paths []string
-	for _, p := range rawPaths {
-		paths = append(paths, cleanPath(p))
+	var basePaths []string
+	
+	dir := ""
+	sameDir := true
+
+	for i, p := range rawPaths {
+		cleanP := cleanPath(p)
+		paths = append(paths, cleanP)
+		if i == 0 {
+			dir = filepath.Dir(cleanP)
+		} else if filepath.Dir(cleanP) != dir {
+			sameDir = false
+		}
+		basePaths = append(basePaths, filepath.Base(cleanP))
 	}
 	out := cleanPath(config.OutputFile)
 
 	var cmd *exec.Cmd
+	var targetPaths []string
+	if sameDir {
+		targetPaths = basePaths
+	} else {
+		targetPaths = paths
+	}
 
 	switch config.ArchiveFormat {
 	case "zip":
-		args := []string{"-r", "-X", "-x", "*.DS_Store", "-x", "__MACOSX/*"}
+		args := []string{"-r", "-X"}
 		if config.ArchivePassword != "" {
 			args = append(args, "-e", "-P", config.ArchivePassword)
 		}
 		args = append(args, out)
-		args = append(args, paths...)
+		args = append(args, targetPaths...)
+		// -x must be at the very end of the zip command
+		args = append(args, "-x", "*.DS_Store", "-x", "__MACOSX/*")
 		cmd = exec.Command("zip", args...)
 
 	case "tar.gz":
 		args := []string{"-czvf", out, "--exclude=.DS_Store", "--exclude=__MACOSX"}
-		args = append(args, paths...)
+		args = append(args, targetPaths...)
 		cmd = exec.Command("tar", args...)
 
 	case "7z":
@@ -810,11 +830,14 @@ func handleArchive(config *AppConfig) error {
 		if config.ArchivePassword != "" {
 			args = append(args, fmt.Sprintf("-p%s", config.ArchivePassword))
 		}
-		args = append(args, paths...)
+		args = append(args, targetPaths...)
 		cmd = exec.Command("7z", args...)
 	}
 
 	if cmd != nil {
+		if sameDir {
+			cmd.Dir = dir
+		}
 		outStr, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("archive error: %v, output: %s", err, string(outStr))
